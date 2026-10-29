@@ -35,7 +35,19 @@ desc: |
   ## 说明
 
   语音库与算法来自 [Coopanion](https://github.com/Pal-AI-Lab/Coopanion)（AGPL-3.0）。
-  英文按字母名发音（音库只有普通话音节）。
+
+  ## 已知问题
+
+  - **多音字读错**：字表只存最常见读音，不看上下文。实测「银行」读成 yín xíng、
+    「音乐」读成 yīn lè、「重新」读成 zhòng xīn、「了解」读成 le jiě。
+  - **英文按字母念**：`hello` 读作 h-e-l-l-o，不是单词读音（音库只有普通话音节）。
+  - **Markdown 链接的 URL 会被念出来**：`[链接](http://a.com)` 会多念一串字母。
+  - **不支持日文/韩文**：假名和谚文会被跳过。
+  - **音色固定**：换音色需要重建音库，不是改配置能解决的。
+  - **未在真实 AstrBot 环境验证**：钩子逻辑照源码写，用伪造模块做了 67 项测试，
+    但没在运行中的实例里跑过。遇到问题请带日志提 issue。
+
+  详细说明见仓库 README 的「已知问题」章节。
 version: 1.2.0
 author: 鲸鱼萝莉
 repo: https://github.com/YOUR_NAME/astrbot_plugin_dongsen_voice
