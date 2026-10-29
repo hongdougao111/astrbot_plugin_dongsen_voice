@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-1.2.0-00a870">
+  <img alt="version" src="https://img.shields.io/badge/version-1.3.0-00a870">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-1f6feb">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-3776ab">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-not%20required-8b8b8f">
@@ -88,7 +88,7 @@ WebUI → 插件 → 动森语音 → 刷新图标
 | **GPU** | ❌ 不需要 |
 | **联网** | ❌ 不需要（纯本地合成） |
 | **额外依赖** | 仅 numpy |
-| **内存占用** | 约 3 MB |
+| **内存占用** | 约 12 MB（音库加载为 float64） |
 | **合成耗时** | 150 字 < 40 ms |
 | **包体积** | 2.7 MB |
 
@@ -169,23 +169,35 @@ python test_plugin.py   # 插件逻辑：67 项
 
 诚实列出，都是实测确认的。**装之前先看一眼，能接受再装。**
 
-### 1. 多音字读错（影响最大）
+### 1. 多音字（已部分修复）
 
-字表只存每个字的**最常见读音**，不看上下文。实测：
+**已修复**：内置 413 条多音词表，覆盖最常用的多音字词组。
 
-| 词 | 正确 | 实际合成 |
+| 词 | 修复前 | 现在 |
 |---|---|---|
-| 银行 | yín **háng** | yín **xíng** ✗ |
-| 音乐 | yīn **yuè** | yīn **lè** ✗ |
-| 重新 | **chóng** xīn | **zhòng** xīn ✗ |
-| 了解 | **liǎo** jiě | **le** jiě ✗ |
-| 长大 | **zhǎng** dà | zhǎng dà ✓ |
-| 快乐 | kuài lè | kuài lè ✓ |
+| 银行 | yín **xíng** ✗ | yín **háng** ✓ |
+| 音乐 | yīn **lè** ✗ | yīn **yuè** ✓ |
+| 重新 | **zhòng** xīn ✗ | **chóng** xīn ✓ |
+| 了解 | **le** jiě ✗ | **liǎo** jiě ✓ |
+| 长大 | zhǎng dà ✓ | zhǎng dà ✓ |
 
-**为什么**：参考实现有分词和词性标注，本插件没有。要修得引入分词库或
-上下文读音表，会显著增加体积和复杂度。
+**仍会错**：词表没覆盖的词组、以及需要句法分析的场景。
 
-**怎么绕**：多音字是硬伤，暂时只能靠人工替换文本。
+```
+「行的」→ 读成 xíng de（应该是 háng 或 hang）
+「还给你」→ 可能读错
+```
+
+**为什么不能完全解决**：真正的多音字消歧需要分词 + 词性标注，
+参考实现也没做到完美。词表是「用 20% 的代价解决 80% 的问题」。
+
+**怎么扩展**：编辑 `dongsen/phrases.py`，按现有格式加一行：
+
+```python
+_add("词组", "yin1 yue4")
+```
+
+长度必须和词的字数一致，否则导入时会报错。
 
 ### 2. 英文按字母念
 

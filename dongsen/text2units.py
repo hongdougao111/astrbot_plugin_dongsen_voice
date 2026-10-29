@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .phrases import match_phrase
+
 # 数字的中文读音
 DIGITS = ["ling", "yi", "er", "san", "si", "wu", "liu", "qi", "ba", "jiu"]
 
@@ -78,6 +80,26 @@ def text_to_units(
     n = len(text)
 
     while i < n:
+        # 优先匹配多音字词组（最长优先）
+        #
+        # 这一步必须在逐字查表之前：字表每个字只存一个读音，
+        # 「银行」会读成 yín xíng。词组表命中就整词覆盖。
+        phrase = match_phrase(text, i)
+        if phrase is not None:
+            plen, syllables = phrase
+            for k, syl_tone in enumerate(syllables):
+                syl = syl_tone[:-1]
+                tone = int(syl_tone[-1]) if syl_tone[-1].isdigit() else 0
+                if tone == 5:
+                    tone = 0
+                if syl in bank_keys:
+                    items.append({
+                        "at": i + k, "key": syl, "tone": tone,
+                        "stress": False, "weak": False,
+                    })
+            i += plen
+            continue
+
         ch = text[i]
         found = False
 

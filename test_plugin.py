@@ -411,6 +411,52 @@ def main():
         check("纯标点合成报错", False, f"抛了 {type(e).__name__}")
 
     # ------------------------------------------------------------------
+    print("\n[14] 多音字词组")
+    from dongsen import phrases as ph
+
+    st = ph.stats()
+    check("词表规模 >300", st["phrase_count"] > 300, str(st["phrase_count"]))
+    check("最长词条 >=3", st["longest"] >= 3, str(st["longest"]))
+
+    # 关键多音字必须读对
+    polyphone_cases = [
+        ("银行", ["yin2", "hang2"], "银行 háng"),
+        ("音乐", ["yin1", "yue4"], "音乐 yuè"),
+        ("重新", ["chong2", "xin1"], "重新 chóng"),
+        ("了解", ["liao3", "jie3"], "了解 liǎo"),
+        ("长大", ["zhang3", "da4"], "长大 zhǎng"),
+        ("快乐", ["kuai4", "le4"], "快乐 lè"),
+        ("处理", ["chu3", "li3"], "处理 chǔ"),
+        ("数量", ["shu4", "liang4"], "数量 liàng"),
+        ("行业", ["hang2", "ye4"], "行业 háng"),
+        ("觉得", ["jue2", "de5"], "觉得 jué"),
+    ]
+    for word, expect, desc in polyphone_cases:
+        u = text_to_units(word, table, keys)
+        got = [x["key"] + str(x["tone"] if x["tone"] else 5) for x in u]
+        check(desc, got == expect, f"{word} -> {got}")
+
+    # 词组在句中要正确匹配
+    u_sent = text_to_units("我去银行听音乐", table, keys)
+    syls = [x["key"] for x in u_sent]
+    check("句中词组匹配", "hang" in syls and "yue" in syls, str(syls))
+
+    # 部分匹配不能误伤：单字「银」应回落
+    u_single = text_to_units("银", table, keys)
+    check("单字回落正常", len(u_single) == 1 and u_single[0]["key"] == "yin",
+          str([x["key"] for x in u_single]))
+
+    # 最长优先：「音乐家」应先匹配「音乐」
+    u_long = text_to_units("音乐家", table, keys)
+    check("最长优先", [x["key"] for x in u_long] == ["yin", "yue", "jia"],
+          str([x["key"] for x in u_long]))
+
+    # 词组不能破坏长度：合成结果音节数应等于词长
+    for word in ["银行", "重新", "了解", "音乐会"]:
+        u = text_to_units(word, table, keys)
+        check(f"{word} 音节数匹配", len(u) == len(word), f"{len(u)} vs {len(word)}")
+
+    # ------------------------------------------------------------------
     print("\n" + "=" * 46)
     print(f"通过 {PASS} / 失败 {FAIL}")
     if FAILS:

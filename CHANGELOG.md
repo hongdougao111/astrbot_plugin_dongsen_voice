@@ -3,6 +3,31 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-10-29
+
+### 新增
+
+- **多音字词组表**（`dongsen/phrases.py`，413 条），修复最常用的多音字误读：
+  - 银行 yín háng（原 yín xíng）
+  - 音乐 yīn yuè（原 yīn lè）
+  - 重新 chóng xīn（原 zhòng xīn）
+  - 了解 liǎo jiě（原 le jiě）
+  - 处理 chǔ lǐ、数量 shù liàng、行业 háng yè 等
+- 采用**最长优先**匹配：`音乐家` 正确切分为「音乐」+「家」
+- 19 项多音字回归测试
+
+### 修复
+
+- **README 内存占用数字错误**：原写「约 3 MB」，实测为 **12 MB**
+  （音库 int16 转 float64 后膨胀 4 倍）
+
+### 变更
+
+- 作者名改为 `hongdougao111`
+- README 图标改用绝对 raw 地址（相对路径在 GitHub 上渲染失败）
+
+---
+
 ## [1.2.0] - 2026-10-29
 
 ### 新增
