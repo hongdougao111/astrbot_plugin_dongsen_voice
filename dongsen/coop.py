@@ -245,6 +245,9 @@ def play_unit(
 
 MAX_LAG = 1.0   # 落后超过 1 秒：丢弱读字；超过 2 秒：只保留短语末两字
 
+# 语速基准：这个语速下音高等于配置的音高；更快则音高上移、单元变短。
+BASE_UPS = 10.0
+
 
 def render_speech(
     units: list[dict],
@@ -273,24 +276,57 @@ def render_speech(
         rnd_state = (rnd_state * 16807) % 2147483647
         return rnd_state / 2147483647
 
-    pieces: list[np.ndarray] = []
+    # 先用时间轴排布所有单元，再一次性渲染到缓冲区。
+    #
+    # 为什么不用 list + concatenate：单元会重叠（语速快时），
+    # 重叠区必须**相加**而不是拼接，否则会出现重复播放而非混音。
+    placed: list[tuple[int, np.ndarray]] = []
     last_start = -1e9
     last_end = 0.0
     free = 0.0
-    gap = 0.0
-
-    # 「应有时间」：按每秒 ups 个单元线性推进
     expected = 0.0
-    cursor = 0          # 已写入的样本总数
     dropped = 0
 
     for u in units:
         if not bank.has(u["key"]):
             continue
-        rate = pitch_hz / bank.hz
+
+        # 语速 → 实际音高。
+        #
+        # 为什么这样做：单元固定 0.115s（364Hz 下），播放时音高越高越短。
+        # 单靠「起点间隔」控制语速时，单元 0.102s 就是硬下限——
+        # ups 超过 ~9.8 就完全失效（实测 13/16/20/25 总时长一模一样）。
+        #
+        # 动森原版的做法正是：语速快 = 播放速率快 = 音高更高 + 单元更短。
+        # 这里沿用同一逻辑：以 BASE_UPS 为基准，语速每快一倍，音高升一个八度。
+        # 这样语速既改变间隔，也改变单元长度，真正生效。
+        speed_ratio = units_per_second / BASE_UPS
+        effective_pitch = pitch_hz * max(0.6, min(2.5, speed_ratio))
+
+        rate = effective_pitch / bank.hz
         clip_len = bank.units[u["key"]][1] / rate
 
-        t = max(last_start + 1.0 / units_per_second, free)
+        # 语速实现：单元**不重叠**，语速通过「起点间隔」控制。
+        #
+        # 这里踩了两个坑，都记下来：
+        #
+        # 坑一：早期用 t = max(last_start + 1/ups, free)，
+        #   但 free = last_end（单元结束时间），单元 0.102s 比
+        #   ups=13 的间隔 0.077s 长，free 永远更大，语速完全失效
+        #   （实测 ups 10→20 总时长一模一样）。
+        #
+        # 坑二：改成允许重叠后，语速生效了，但音节糊成一团
+        #   （实测「你好呀」只剩 1 个发声段而不是 3 个），
+        #   最后一个字的字头被前一个字盖住——这就是「吞字」的成因。
+        #
+        # 现在的做法：**单元首尾相接，绝不重叠**。
+        # 语速只控制相邻单元的起点间隔；间隔小于单元时长时，
+        # 下一个单元紧接在上一个之后。这样每个音节都完整。
+        if last_start > -1e8:
+            step = max(1.0 / units_per_second, clip_len)
+            t = max(last_start + step, free)
+        else:
+            t = max(0.0, free)
         lag = t - expected
         is_final = u.get("pos", 0) >= u.get("of", 1) - 2
 
@@ -300,26 +336,26 @@ def render_speech(
                 expected += 1.0 / units_per_second
                 continue
 
-        start_sample = int(t * sr)
         wav = play_unit(
-            bank, u["key"], pitch_hz,
+            bank, u["key"], effective_pitch,
             tone=u.get("tone", 0), stress=u.get("stress", False),
             pos=u.get("pos", 0), of=u.get("of", 1),
             end=u.get("end", ""), rnd=random(),
         )
+        if len(wav) == 0:
+            continue
 
-        # 累计长度用游标追踪，避免每轮都 sum() 造成 O(n²)
-        if start_sample > cursor:
-            pieces.append(np.zeros(start_sample - cursor))
-            cursor = start_sample
-        pieces.append(wav)
-        cursor += len(wav)
-
+        placed.append((int(t * sr), wav))
         last_start = t
         last_end = t + len(wav) / sr
-        free = last_end
         expected += 1.0 / units_per_second
 
+        # free 只表示「标点后的硬静音约束」，不是「上一单元的结束」。
+        #
+        # 这一点踩过坑：如果 free = last_end（单元结束时间），
+        # 那么 t = max(ideal, free) 永远取 free——因为单元 0.102s
+        # 比 ups=13 的间隔 0.077s 长，语速参数就完全失效了。
+        # 正确做法：free 只在遇到标点时才推后，其余时刻保持不动。
         gap = 0.0
         # 只有短语最后一个单元才加标点静音
         if u.get("pos", 0) >= u.get("of", 1) - 1:
@@ -330,10 +366,17 @@ def render_speech(
             free = last_end + gap
             expected = free
 
-    if not pieces:
+    if not placed:
         return Path(out_path)
 
-    audio = np.concatenate(pieces)
+    # 分配足够长的缓冲区，逐单元相加
+    total = max(off + len(w) for off, w in placed)
+    audio = np.zeros(total, dtype=np.float32)
+    for off, w in placed:
+        end = off + len(w)
+        if end <= total:
+            audio[off:end] += w
+
     m = np.abs(audio).max()
     if m > 1e-9:
         audio = audio / m * 0.9

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-1.4.0-00a870">
+  <img alt="version" src="https://img.shields.io/badge/version-1.5.0-00a870">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-1f6feb">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-3776ab">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-not%20required-8b8b8f">
@@ -111,12 +111,16 @@ WebUI → 插件 → 动森语音 → 刷新图标
 
 ### 语速
 
-| 数值 | 听感 |
-|---|---|
-| 10 | 慢，每个字都听得清 |
-| **13** | 接近原版（默认） |
-| 18 | 叽里咕噜 |
-| 22+ | 很快，可能糊 |
+| 数值 | 听感 | 音高影响 |
+|---|---|---|
+| 8 | 慢，每个字都听得清 | 略降 |
+| 10 | 基准语速 | 配置值 |
+| **13** | 接近原版（默认） | 略升 |
+| 18 | 叽里咕噜 | 明显升高 |
+| 22+ | 很快 | 很高 |
+
+**语速会耦合音高**：语速越快，音高越高、单元越短。
+这是动森原版的做法——原版就是靠播放速率同时改变音高和时长。
 
 ---
 

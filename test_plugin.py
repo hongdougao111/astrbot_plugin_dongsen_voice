@@ -489,6 +489,69 @@ def main():
     check("内存 <8MB", mem_mb < 8, f"{mem_mb:.1f}MB")
 
     # ------------------------------------------------------------------
+    print("\n[17] 吞字与语速（v1.5.0 修复）")
+
+    import numpy as _np
+
+    def count_syllable_segments(path):
+        """数音频里的音节数（能量包络的局部谷 + 1）。"""
+        import wave as _w
+
+        import numpy as _np
+
+        with _w.open(str(path), "rb") as ww:
+            n = ww.getnframes()
+            sr = ww.getframerate()
+            d = _np.frombuffer(ww.readframes(n), dtype=_np.int16).astype(float) / 32768
+        win = int(0.005 * sr)
+        env = _np.convolve(_np.abs(d), _np.ones(win) / win, mode="same")
+        step = int(0.010 * sr)
+        vals = [env[i:i + step].mean() for i in range(0, n, step) if len(env[i:i + step]) > 0]
+        valleys = sum(
+            1 for i in range(1, len(vals) - 1)
+            if vals[i] < vals[i - 1] and vals[i] < vals[i + 1] and vals[i] < max(vals) * 0.5
+        )
+        return valleys + 1, d, sr
+
+    from dongsen import say as _say
+
+    import tempfile as _tf
+
+    _tmp2 = Path(_tf.gettempdir()) / "dongsen_v150"
+    _tmp2.mkdir(parents=True, exist_ok=True)
+
+    # 每个字的音节都要能分辨出来（这正是「吞字」的检测方法）
+    for text in ["你好呀", "你好世界", "今天天气不错"]:
+        p = _tmp2 / f"seg_{len(text)}.wav"
+        _say(text, p)
+        cnt, d, sr = count_syllable_segments(p)
+        check(f"{text} 音节数={len(text)}", cnt == len(text), f"检测到 {cnt}")
+
+    # 最后一个字要有能量（不能是静音）
+    p = _tmp2 / "tail.wav"
+    _say("你好呀", p)
+    _, d, sr = count_syllable_segments(p)
+    tail_peak = float(_np.abs(d[-int(0.02 * sr):]).max())
+    check("末字非静音", tail_peak > 0.1, f"末段峰值 {tail_peak:.3f}")
+
+    # 语速要真正生效（曾经 10~25 总时长完全一样）
+    durations = []
+    for ups in [8, 13, 20]:
+        p = _tmp2 / f"ups_{ups}.wav"
+        _say("你好呀今天天气不错", p, units_per_second=ups)
+        cnt, d, sr = count_syllable_segments(p)
+        durations.append(len(d) / sr)
+    check("语速 8 > 13", durations[0] > durations[1], str([round(x, 3) for x in durations]))
+    check("语速 13 > 20", durations[1] > durations[2], str([round(x, 3) for x in durations]))
+
+    # 无削波
+    p = _tmp2 / "noclip.wav"
+    _say("你好呀今天天气不错", p, units_per_second=20)
+    _, d, sr = count_syllable_segments(p)
+    check("高语速无削波", float(_np.mean(_np.abs(d) > 0.999)) < 0.001,
+          f"{_np.mean(_np.abs(d) > 0.999)*100:.3f}%")
+
+    # ------------------------------------------------------------------
     print("\n" + "=" * 46)
     print(f"通过 {PASS} / 失败 {FAIL}")
     if FAILS:
