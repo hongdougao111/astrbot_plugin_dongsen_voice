@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# 测试与缓存
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*~
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地临时文件
+out/
+*.tmp

@@ -1,0 +1,87 @@
+{
+  "enable_auto": {
+    "description": "启用自动语音回复",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，Bot 的回复会自动转成动森语音发送。关闭时仍可用 /动森 指令手动合成。",
+    "obvious_hint": true
+  },
+  "auto_probability": {
+    "description": "自动语音触发概率",
+    "type": "int",
+    "default": 100,
+    "slider": {
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    "hint": "100 = 每条回复都转语音；30 = 三成回复转语音，七成保持文字。适合想保留可读性的群。"
+  },
+  "pitch_hz": {
+    "description": "音高（Hz）",
+    "type": "int",
+    "default": 400,
+    "slider": {
+      "min": 300,
+      "max": 700,
+      "step": 10
+    },
+    "hint": "364 = 音库原音，最自然；400 = 动森实际音域（默认）；480 偏尖；560+ 像花栗鼠。越高语音越短。"
+  },
+  "units_per_second": {
+    "description": "语速（音节/秒）",
+    "type": "int",
+    "default": 13,
+    "slider": {
+      "min": 5,
+      "max": 25,
+      "step": 1
+    },
+    "hint": "13 接近动森原版；10 慢而清晰；18 叽里咕噜；22+ 很快可能听不清。"
+  },
+  "max_chars": {
+    "description": "自动转语音的最大字数",
+    "type": "int",
+    "default": 150,
+    "slider": {
+      "min": 10,
+      "max": 300,
+      "step": 10
+    },
+    "hint": "超过这个长度的回复保持文字不转语音，避免生成超大音频拖慢响应。"
+  },
+  "min_chars": {
+    "description": "自动转语音的最小字数",
+    "type": "int",
+    "default": 2,
+    "slider": {
+      "min": 1,
+      "max": 20,
+      "step": 1
+    },
+    "hint": "太短的回复（如「嗯」「好」）转语音没有意义，低于这个字数跳过。"
+  },
+  "per_session_settings": {
+    "description": "允许会话内用指令覆盖设置",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后群成员可用 /动森音高、/动森语速 等指令临时调整本群参数。关闭则只认管理面板配置。"
+  },
+  "send_text_too": {
+    "description": "语音之外同时发送文字",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后消息里既有语音也有文字，方便看不清语音时阅读。部分客户端可能显示混乱。"
+  },
+  "cleanup_minutes": {
+    "description": "临时音频保留时长（分钟）",
+    "type": "int",
+    "default": 10,
+    "slider": {
+      "min": 1,
+      "max": 120,
+      "step": 1
+    },
+    "hint": "合成出的 wav 临时文件在磁盘上保留多久。云端部署磁盘空间有限，不建议设太长。"
+  }
+}

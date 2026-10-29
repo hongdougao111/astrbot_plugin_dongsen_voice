@@ -1,0 +1,9 @@
+# 音库是二进制，不做文本差异
+dongsen/data/*.wav binary
+dongsen/data/*.ogg binary
+
+# 保证脚本在 Windows 检出后仍可执行
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf

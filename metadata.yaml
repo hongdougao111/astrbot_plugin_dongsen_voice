@@ -1,0 +1,50 @@
+name: astrbot_plugin_dongsen_voice
+display_name: 动森语音
+short_desc: 让 Bot 用《动物森友会》村民的腔调说话。
+desc: |
+  把 Bot 的回复变成《动物森友会》风格的语音。
+
+  **不是 TTS，不是变声器**——从 407 个真人录制的普通话音节里挑出来拼的，
+  和动森本体用的是同一套方法。
+
+  ## 特性
+
+  - 🎛 **九个参数全部可视化**：音高、语速、概率、字数范围，滑块直接调
+  - 🎲 **概率语音回复**：设成 30 就是三成回复发语音，兼顾效果与可读性
+  - 🪶 **云端零依赖**：自带 22.05kHz WAV 音库，不需要 ffmpeg、GPU、联网
+  - ⚡ **快**：150 字合成不到 40 ms，在线程池跑不阻塞事件循环
+  - 🔒 **安全**：只转 LLM 回复，不碰指令输出；配置越界自动钳制
+  - 🌐 **会话隔离**：不同群可以设不同的音高和语速
+
+  ## 用法
+
+  1. 把插件目录放进 `AstrBot/data/plugins/`
+  2. WebUI → 插件 → 动森语音 → 刷新
+  3. 配置里打开「启用自动语音回复」
+
+  手动合成：`/动森 你好呀`
+
+  ## 指令
+
+  - `/动森 <文字>` 手动合成
+  - `/动森状态` 查看设置
+  - `/动森音高 <300-700>` 本群音高
+  - `/动森语速 <5-25>` 本群语速
+  - `/动森重置` 恢复默认
+
+  ## 说明
+
+  语音库与算法来自 [Coopanion](https://github.com/Pal-AI-Lab/Coopanion)（AGPL-3.0）。
+  英文按字母名发音（音库只有普通话音节）。
+version: 1.2.0
+author: 鲸鱼萝莉
+repo: https://github.com/YOUR_NAME/astrbot_plugin_dongsen_voice
+astrbot_version: ">=4.0.0"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+tags:
+  - 语音
+  - tts
+  - 动森
+  - 娱乐
