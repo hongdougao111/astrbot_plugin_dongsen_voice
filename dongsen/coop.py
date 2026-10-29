@@ -98,9 +98,11 @@ class SpeechBank:
             self.sr = w.getframerate()
             ch = w.getnchannels()
             raw = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-        data = raw.astype(np.float64) / 32768.0
+        # 用 float32 而非 float64：音库源是 int16，float32 的 24 位尾数
+        # 远超 16 位精度，听感无损，但内存省一半（12MB → 6MB）。
+        data = raw.astype(np.float32) / 32768.0
         if ch > 1:
-            data = data.reshape(-1, ch).mean(axis=1)
+            data = data.reshape(-1, ch).mean(axis=1).astype(np.float32)
         self.audio = data
 
     @staticmethod

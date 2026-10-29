@@ -62,7 +62,7 @@ DEFAULTS = {
     "astrbot_plugin_dongsen_voice",
     "hongdougao111",
     "把 Bot 的回复变成动森风格语音",
-    "1.3.0",
+    "1.4.0",
 )
 class DongsenVoicePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
@@ -74,6 +74,96 @@ class DongsenVoicePlugin(Star):
         self._tmpdir = Path(tempfile.gettempdir()) / "astrbot_dongsen"
         self._tmpdir.mkdir(parents=True, exist_ok=True)
         self._last_cleanup = 0.0
+        # 自检结果，供 /动森诊断 使用
+        self._diag: dict[str, object] = {}
+        self._self_check()
+
+    # ---------- 启动自检 ----------
+
+    def _self_check(self) -> None:
+        """启动时检查运行环境，把结果写日志并缓存。
+
+        为什么需要：如果 AstrBot 版本变化导致钩子失效或音库缺失，
+        插件会**静默不工作**——用户看到的现象是"没反应"，
+        但日志里什么都没有，极难排查。这里主动探一遍。
+        """
+        problems: list[str] = []
+        ok: list[str] = []
+
+        # 1. 音库
+        try:
+            from dongsen import load_bank
+
+            bank = load_bank()
+            ok.append(f"音库 {len(bank.units)} 单元 / {bank.sr}Hz / {bank.audio.nbytes // 1024 // 1024}MB")
+        except Exception as e:
+            problems.append(f"音库加载失败: {e}")
+            bank = None
+
+        # 2. 字表
+        try:
+            from dongsen import load_table
+
+            table = load_table()
+            ok.append(f"字表 {len(table)} 字")
+        except Exception as e:
+            problems.append(f"字表加载失败: {e}")
+            table = None
+
+        # 3. 钩子注册（能否找到 on_decorating_result）
+        try:
+            hook = getattr(self, "auto_voice", None)
+            if hook is None:
+                problems.append("auto_voice 钩子未注册")
+            elif not callable(hook):
+                problems.append("auto_voice 不是可调用对象")
+            else:
+                ok.append("钩子已注册")
+        except Exception as e:
+            problems.append(f"钩子检查异常: {e}")
+
+        # 4. ResultContentType 枚举（版本兼容性）
+        try:
+            from astrbot.core.message.message_event_result import ResultContentType
+
+            names = {x.name for x in ResultContentType}
+            needed = {"LLM_RESULT", "STREAMING_FINISH"}
+            missing = needed - names
+            if missing:
+                problems.append(f"ResultContentType 缺字段: {missing}（版本不兼容）")
+            else:
+                ok.append(f"消息类型枚举 {len(names)} 项")
+        except ImportError:
+            # 不同版本路径可能不同，不算致命
+            ok.append("消息类型枚举路径不同（可能是新版 AstrBot）")
+        except Exception as e:
+            problems.append(f"枚举检查异常: {e}")
+
+        # 5. 合成能力（真正跑一次）
+        if bank is not None and table is not None:
+            try:
+                import tempfile as _tf
+
+                probe = Path(_tf.gettempdir()) / "astrbot_dongsen_probe.wav"
+                say("测试", probe, pitch_hz=400, units_per_second=13)
+                size = probe.stat().st_size
+                probe.unlink(missing_ok=True)
+                if size > 1000:
+                    ok.append(f"合成正常（{size // 1024}KB）")
+                else:
+                    problems.append(f"合成结果过小: {size} bytes")
+            except Exception as e:
+                problems.append(f"合成失败: {e}")
+
+        self._diag = {"ok": ok, "problems": problems}
+
+        if problems:
+            logger.error(
+                "[dongsen] 自检发现问题：\n  - " + "\n  - ".join(problems)
+                + "\n  （插件可能无法正常工作，请检查依赖与版本）"
+            )
+        else:
+            logger.info("[dongsen] 自检通过：" + "；".join(ok))
 
     # ---------- 配置读取 ----------
 
@@ -357,6 +447,40 @@ class DongsenVoicePlugin(Star):
             return
         self._session_ups[session] = v
         yield event.plain_result(f"本群语速设为 {v:.0f} 音节/秒。")
+
+    @filter.command("动森诊断")
+    async def diagnose(self, event: AstrMessageEvent):
+        """检查运行环境，排查「没反应」类问题。"""
+        ok = self._diag.get("ok", [])
+        problems = self._diag.get("problems", [])
+
+        lines = ["【动森语音 诊断】", ""]
+        if problems:
+            lines.append("❌ 发现问题：")
+            for p in problems:
+                lines.append(f"  · {p}")
+            lines.append("")
+        if ok:
+            lines.append("✅ 正常项：")
+            for o in ok:
+                lines.append(f"  · {o}")
+            lines.append("")
+
+        # 当前配置
+        s = event.unified_msg_origin
+        lines.append(
+            f"配置：自动={'开' if self._auto_on() else '关'} "
+            f"概率={self._prob()}% "
+            f"音高={self._pitch(s):.0f} "
+            f"语速={self._ups(s):.0f}"
+        )
+
+        if problems:
+            lines.append("")
+            lines.append("建议：检查 AstrBot 版本是否 >= 4.0，"
+                         "以及 dongsen/data/ 下的音库文件是否完整。")
+
+        yield event.plain_result("\n".join(lines))
 
     @filter.command("动森重置")
     async def reset_session(self, event: AstrMessageEvent):

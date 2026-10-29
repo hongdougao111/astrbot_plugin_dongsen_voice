@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-1.3.0-00a870">
+  <img alt="version" src="https://img.shields.io/badge/version-1.4.0-00a870">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-1f6feb">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-3776ab">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-not%20required-8b8b8f">
@@ -88,7 +88,7 @@ WebUI → 插件 → 动森语音 → 刷新图标
 | **GPU** | ❌ 不需要 |
 | **联网** | ❌ 不需要（纯本地合成） |
 | **额外依赖** | 仅 numpy |
-| **内存占用** | 约 12 MB（音库加载为 float64） |
+| **内存占用** | 约 6 MB（float32） |
 | **合成耗时** | 150 字 < 40 ms |
 | **包体积** | 2.7 MB |
 
@@ -129,6 +129,7 @@ WebUI → 插件 → 动森语音 → 刷新图标
 | `/动森音高 <300-700>` | 本群音高 |
 | `/动森语速 <5-25>` | 本群语速 |
 | `/动森重置` | 恢复管理面板配置 |
+| `/动森诊断` | 检查运行环境，排查「没反应」 |
 
 会话内设置**只对当前群生效**，互不干扰。
 
@@ -162,6 +163,36 @@ python test_plugin.py   # 插件逻辑：67 项
 **85 项全部通过**，不需要安装 AstrBot 就能跑。
 
 覆盖：音库完整性、配置读取与越界保护、会话隔离、文本过滤、消息类型判断、钩子行为、概率统计、并发安全、性能、英文处理、零依赖加载。
+
+---
+
+## 🔍 启动自检
+
+插件启动时会自动检查运行环境，结果写入日志：
+
+```
+[dongsen] 自检通过：音库 407 单元 / 22050Hz / 6MB；字表 20924 字；钩子已注册；合成正常（18KB）
+```
+
+如果发现问题：
+
+```
+[dongsen] 自检发现问题：
+  - ResultContentType 缺字段: {'STREAMING_FINISH'}（版本不兼容）
+  - 音库加载失败: [Errno 2] No such file or directory
+```
+
+**为什么要这个**：如果 AstrBot 版本变化导致钩子失效、或音库文件缺失，
+插件会**静默不工作**——用户看到的现象只是「没反应」，
+日志里什么都没有，极难排查。自检把这类问题提前暴露。
+
+随时可手动检查：
+
+```
+/动森诊断
+```
+
+输出会列出正常项、问题项和当前配置。
 
 ---
 

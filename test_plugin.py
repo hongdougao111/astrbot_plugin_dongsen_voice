@@ -457,6 +457,38 @@ def main():
         check(f"{word} 音节数匹配", len(u) == len(word), f"{len(u)} vs {len(word)}")
 
     # ------------------------------------------------------------------
+    print("\n[15] 启动自检")
+    check("有自检方法", hasattr(P, "_self_check"))
+    check("自检结果已缓存", hasattr(p, "_diag"))
+
+    diag = getattr(p, "_diag", {})
+    check("diag 有 ok 字段", "ok" in diag, str(diag.keys()))
+    check("diag 有 problems 字段", "problems" in diag, str(diag.keys()))
+
+    ok_list = diag.get("ok", [])
+    prob_list = diag.get("problems", [])
+    check("自检无问题", len(prob_list) == 0, str(prob_list))
+    check("自检有通过项", len(ok_list) >= 3, str(ok_list))
+
+    # 关键项应在 ok 里
+    joined = " ".join(str(x) for x in ok_list)
+    check("检查了音库", "音库" in joined, joined[:80])
+    check("检查了字表", "字表" in joined, joined[:80])
+    check("检查了钩子", "钩子" in joined, joined[:80])
+    check("检查了合成", "合成" in joined, joined[:80])
+
+    print("\n[16] 诊断指令")
+    check("有诊断指令", hasattr(P, "diagnose"))
+
+    # 内存优化：音库应是 float32
+    from dongsen import load_bank as _lb
+
+    _b = _lb()
+    check("音库 float32", str(_b.audio.dtype) == "float32", str(_b.audio.dtype))
+    mem_mb = _b.audio.nbytes / 1024 / 1024
+    check("内存 <8MB", mem_mb < 8, f"{mem_mb:.1f}MB")
+
+    # ------------------------------------------------------------------
     print("\n" + "=" * 46)
     print(f"通过 {PASS} / 失败 {FAIL}")
     if FAILS:
