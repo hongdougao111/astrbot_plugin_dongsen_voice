@@ -49,7 +49,7 @@ desc: |
 
   详细说明见仓库 README 的「已知问题」章节。
 version: 1.2.0
-author: 鲸鱼萝莉
+author: hongdougao111
 repo: https://github.com/hongdougao111/astrbot_plugin_dongsen_voice
 astrbot_version: ">=4.0.0"
 support_platforms:

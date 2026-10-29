@@ -1,7 +1,7 @@
 # 🐋 动森语音 · AstrBot Plugin
 
 <p align="center">
-  <img src="logo.png" alt="动森语音" width="180">
+  <img src="https://raw.githubusercontent.com/hongdougao111/astrbot_plugin_dongsen_voice/main/logo.png" alt="动森语音" width="180">
 </p>
 
 <p align="center">

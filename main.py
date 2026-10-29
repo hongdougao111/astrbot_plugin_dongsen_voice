@@ -60,7 +60,7 @@ DEFAULTS = {
 
 @register(
     "astrbot_plugin_dongsen_voice",
-    "鲸鱼萝莉",
+    "hongdougao111",
     "把 Bot 的回复变成动森风格语音",
     "1.2.0",
 )
