@@ -1,6 +1,12 @@
 # 🐋 动森语音 · AstrBot Plugin
 
-> 让 Bot 用《动物森友会》村民的腔调说话。
+<p align="center">
+  <img src="logo.png" alt="动森语音" width="180">
+</p>
+
+<p align="center">
+  <b>让 Bot 用《动物森友会》村民的腔调说话。</b>
+</p>
 
 <p align="center">
   <img alt="version" src="https://img.shields.io/badge/version-1.2.0-00a870">
