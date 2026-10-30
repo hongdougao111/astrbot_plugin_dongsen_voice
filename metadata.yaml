@@ -48,7 +48,7 @@ desc: |
     但没在运行中的实例里跑过。遇到问题请带日志提 issue。
 
   详细说明见仓库 README 的「已知问题」章节。
-version: 1.5.0
+version: 1.5.1
 author: hongdougao111
 repo: https://github.com/hongdougao111/astrbot_plugin_dongsen_voice
 astrbot_version: ">=4.0.0"

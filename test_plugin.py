@@ -527,12 +527,19 @@ def main():
         cnt, d, sr = count_syllable_segments(p)
         check(f"{text} 音节数={len(text)}", cnt == len(text), f"检测到 {cnt}")
 
-    # 最后一个字要有能量（不能是静音）
+    # 末尾要有真实静音余韵（v1.5.1 修复）
+    #
+    # 早期版本把标点静音只记在排布变量里，从未写入缓冲区，
+    # 音频在最后一个字刚衰减完就结束（243ms 的语音没有任何余韵），
+    # 播放端听起来像最后一个字被切掉。
     p = _tmp2 / "tail.wav"
     _say("你好呀", p)
     _, d, sr = count_syllable_segments(p)
-    tail_peak = float(_np.abs(d[-int(0.02 * sr):]).max())
-    check("末字非静音", tail_peak > 0.1, f"末段峰值 {tail_peak:.3f}")
+    nz = _np.where(_np.abs(d) > 0.01)[0]
+    tail_ms = (len(d) - nz[-1]) / sr * 1000 if len(nz) else len(d) / sr * 1000
+    check("末尾有余韵 >200ms", tail_ms > 200, f"静音 {tail_ms:.0f}ms")
+    check("末尾确实是静音", float(_np.abs(d[-int(0.02 * sr):]).max()) < 0.05,
+          f"末段峰值 {float(_np.abs(d[-int(0.02 * sr):]).max()):.3f}")
 
     # 语速要真正生效（曾经 10~25 总时长完全一样）
     durations = []

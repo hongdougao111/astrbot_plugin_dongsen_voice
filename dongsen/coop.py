@@ -371,6 +371,24 @@ def render_speech(
 
     # 分配足够长的缓冲区，逐单元相加
     total = max(off + len(w) for off, w in placed)
+
+    # 末尾补静音：短语结束后的停顿必须真的写进音频。
+    #
+    # 这是「最后一个字被吞」的真正原因：早期版本把标点静音记到 free 变量里，
+    # 但只用于排布下一个单元，**从未写入缓冲区**。
+    # 结果音频在最后一个字刚衰减完就立即结束（243ms 的语音没有任何余韵），
+    # 播放端（尤其 QQ）听起来就像最后一个字被切掉。
+    #
+    # 现在按最后一句的标点补上真实静音。
+    tail_silence = 0.0
+    if units:
+        last_unit = units[-1]
+        for ch, g in VOICE_GAP.items():
+            if ch in last_unit.get("end", ""):
+                tail_silence = max(tail_silence, g)
+    if tail_silence > 0:
+        total += int(tail_silence * sr)
+
     audio = np.zeros(total, dtype=np.float32)
     for off, w in placed:
         end = off + len(w)

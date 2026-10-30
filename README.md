@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-1.5.0-00a870">
+  <img alt="version" src="https://img.shields.io/badge/version-1.5.1-00a870">
   <img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-1f6feb">
   <img alt="python" src="https://img.shields.io/badge/python-3.10+-3776ab">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-not%20required-8b8b8f">
