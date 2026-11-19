@@ -3,6 +3,36 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.1] - 2026-11-19
+
+### 修复
+
+- **装上后报 `cannot import name 'say_engine' from 'dongsen'`**：文件里明明有这个函数，
+  说明拿到的不是自己那份。AstrBot 把所有插件塞进同一个进程，
+  `from dongsen import ...` 是**按名字**查 `sys.modules`：若这个进程里早先加载过
+  一个叫 `dongsen` 的包（同目录装过旧版本、或别的插件里也有同名包），来的就是那一个，
+  路径还长得一模一样，于是报错信息指向自己的文件却找不到自己的函数。
+
+  **修复**：不再按名字导入。用 `importlib.util.spec_from_file_location` 按固定文件路径
+  加载插件目录下的 `dongsen/__init__.py`，模块名取独有的
+  `astrbot_dongsen_voice_gen`，包内相对导入靠 `submodule_search_locations` 解决。
+  `sys.modules` 里已有的同名条目一律覆盖。
+
+- 自检里的 `load_bank` / `load_table` 同步改走同一个已加载的模块，不再重新按名字导入。
+
+### 测试
+
+```bash
+python selftest.py      # 18 项
+python test_plugin.py   # 140 项
+```
+
+**158 项全部通过。** 新增 4 项：先往 `sys.modules` 塞一个假的 `dongsen` 再按插件
+方式加载 `main.py`，断言加载成功、`say_engine` 来自自己的目录、不是抢位那个、
+生成器模块名唯一。
+
+---
+
 ## [1.6.0] - 2026-11-19
 
 ### 新增

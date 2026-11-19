@@ -678,6 +678,42 @@ def main():
     check("有声线指令", hasattr(P, "set_voice"))
 
     # ------------------------------------------------------------------
+    print("\n[20] 生成器按路径加载，不怕 sys.modules 里有同名包")
+
+    # 现场报过的故障：装好后报
+    #   cannot import name 'say_engine' from 'dongsen'
+    # 文件里明明有，说明命中的是别的 dongsen（旧版本残留或别的插件的同名包）。
+    # 这里直接复现：先塞一个假的 dongsen，再按插件方式重新加载一次 main.py。
+    import importlib.util as _ilu
+    import types as _types
+
+    stolen = _types.ModuleType("dongsen")
+    stolen.__path__ = []
+    stolen.say = lambda *a, **k: None
+    _saved = sys.modules.get("dongsen")
+    sys.modules["dongsen"] = stolen
+    try:
+        _name = "plugin_main_conflict_probe"
+        _spec = _ilu.spec_from_file_location(_name, HERE / "main.py")
+        _mod = _ilu.module_from_spec(_spec)
+        sys.modules[_name] = _mod
+        _spec.loader.exec_module(_mod)
+        check("同名包抢位也能加载", True)
+        check("say_engine 来自自己的目录",
+              Path(_mod._GEN.__file__).parent == HERE / "dongsen",
+              str(_mod._GEN.__file__))
+        check("不是抢位那个", _mod._GEN is not stolen)
+        check("生成器模块名独有", _mod._GEN.__name__ == "astrbot_dongsen_voice_gen",
+              _mod._GEN.__name__)
+    except Exception as e:  # noqa: BLE001 — 这条失败要报出原因
+        check("同名包抢位也能加载", False, f"{type(e).__name__}: {e}")
+    finally:
+        if _saved is not None:
+            sys.modules["dongsen"] = _saved
+        else:
+            sys.modules.pop("dongsen", None)
+
+    # ------------------------------------------------------------------
     print("\n" + "=" * 46)
     print(f"通过 {PASS} / 失败 {FAIL}")
     if FAILS:

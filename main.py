@@ -34,10 +34,51 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 # 插件自带的生成器
+#
+# 这里不用 `from dongsen import ...`，也不用 `import dongsen` 这种按名字查找的方式。
+# 原因：AstrBot 把所有插件塞进同一个进程，仓库里如果已经存在一个叫 dongsen 的模块
+# （旧版本残留、或别的插件里的同名包），sys.modules 里那个会先被命中，
+# 于是导入到的是别人的 dongsen——现象就是 "cannot import name 'say_engine'
+# from 'dongsen'" 而文件本身明明有这个函数。
+#
+# 所以按固定文件路径加载，模块名用独一无二的 "astrbot_dongsen_voice_gen"，
+# 只认自己目录下的这一份。sys.modules 里已有的同名条目一律覆盖。
 _PLUGIN_DIR = Path(__file__).parent
-sys.path.insert(0, str(_PLUGIN_DIR))
+_GEN_NAME = "astrbot_dongsen_voice_gen"
 
-from dongsen import say, say_engine  # noqa: E402
+if str(_PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_DIR))
+
+
+def _load_generator():
+    """按路径加载插件自带的 dongsen 包，返回模块对象。"""
+    import importlib.util
+
+    pkg_dir = _PLUGIN_DIR / "dongsen"
+    init = pkg_dir / "__init__.py"
+    if not init.is_file():
+        raise ImportError(f"找不到生成器包: {init}")
+
+    spec = importlib.util.spec_from_file_location(
+        _GEN_NAME, init, submodule_search_locations=[str(pkg_dir)],
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"无法为 {init} 创建模块规格")
+
+    module = importlib.util.module_from_spec(spec)
+    # 先认领这个名字，包内部的相对导入（from .coop import ...）会按它去找子模块
+    sys.modules[_GEN_NAME] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(_GEN_NAME, None)
+        raise
+    return module
+
+
+_GEN = _load_generator()
+say = _GEN.say
+say_engine = _GEN.say_engine
 
 # 硬边界（防止配置填错导致崩溃）
 PITCH_MIN, PITCH_MAX = 300.0, 700.0
@@ -78,7 +119,7 @@ DEFAULTS = {
     "astrbot_plugin_dongsen_voice",
     "hongdougao111",
     "把 Bot 的回复变成动森风格语音",
-    "1.6.0",
+    "1.6.1",
 )
 class DongsenVoicePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
@@ -109,7 +150,7 @@ class DongsenVoicePlugin(Star):
 
         # 1. 音库
         try:
-            from dongsen import load_bank
+            load_bank = _GEN.load_bank
 
             bank = load_bank()
             ok.append(f"音库 {len(bank.units)} 单元 / {bank.sr}Hz / {bank.audio.nbytes // 1024 // 1024}MB")
@@ -119,7 +160,7 @@ class DongsenVoicePlugin(Star):
 
         # 2. 字表
         try:
-            from dongsen import load_table
+            load_table = _GEN.load_table
 
             table = load_table()
             ok.append(f"字表 {len(table)} 字")
