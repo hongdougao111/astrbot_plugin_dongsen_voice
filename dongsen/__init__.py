@@ -17,7 +17,7 @@ from pathlib import Path
 from .coop import SpeechBank, render_speech
 from .text2units import CharTable, text_to_units
 
-__all__ = ["say", "say_units", "load_bank", "load_table", "DATA_DIR"]
+__all__ = ["say", "say_units", "say_engine", "load_bank", "load_table", "DATA_DIR", "ENGINES"]
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -66,6 +66,47 @@ def say(
         pitch_hz=pitch_hz,
         units_per_second=units_per_second,
         seed=seed,
+    )
+
+
+# 引擎表。dongsen = 真人音节拼的动森腔（占 3MB 音库）；
+# bibi = 一条锯齿波现捏的「哔哔啵啵」小人声（零音库，纯 numpy）。
+ENGINES = ("dongsen", "bibi")
+
+
+def say_engine(
+    text: str,
+    out_path: str | Path = "out/voice.wav",
+    *,
+    engine: str = "dongsen",
+    pitch_hz: float = DEFAULT_PITCH,
+    units_per_second: float = DEFAULT_UPS,
+    voice: str = "fish",
+    seed: int = 1,
+    **kwargs,
+) -> Path:
+    """按引擎合成语音。engine 只认 dongsen / bibi，别的抛 ValueError。
+
+    voice 只在 bibi 引擎下有效（fish / lumo），dongsen 引擎忽略它。
+    """
+    name = (engine or "dongsen").strip().lower()
+    if name not in ENGINES:
+        raise ValueError(f"未知引擎 {engine!r}，可选 {' / '.join(ENGINES)}")
+    if name == "bibi":
+        from .bibi import synth
+
+        return synth(
+            text, out_path,
+            pitch_hz=pitch_hz,
+            units_per_second=units_per_second,
+            voice=voice,
+        )
+    return say(
+        text, out_path,
+        pitch_hz=pitch_hz,
+        units_per_second=units_per_second,
+        seed=seed,
+        **kwargs,
     )
 
 

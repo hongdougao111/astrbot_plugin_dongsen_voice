@@ -559,6 +559,125 @@ def main():
           f"{_np.mean(_np.abs(d) > 0.999)*100:.3f}%")
 
     # ------------------------------------------------------------------
+    print("\n[18] 哔哔啵啵引擎（v1.6.0 新增）")
+
+    from dongsen import ENGINES, say_engine
+    from dongsen.bibi import VOICES as BIBI_VOICES
+
+    check("引擎表含两套", set(ENGINES) == {"dongsen", "bibi"}, str(ENGINES))
+    check("哔哔啵啵有两条声线", set(BIBI_VOICES) == {"fish", "lumo"}, str(list(BIBI_VOICES)))
+    check("声线表四种", set(plugin_main.VOICES) == {"dongsen", "fish", "lumo", "mix"},
+          str(plugin_main.VOICES))
+
+    try:
+        say_engine("测试", _tmp2 / "bad.wav", engine="nope")
+        check("未知引擎抛错", False, "没抛")
+    except ValueError:
+        check("未知引擎抛错", True)
+
+    for vname in ("fish", "lumo"):
+        vb = _tmp2 / f"bibi_{vname}.wav"
+        say_engine("没饭了？没饭了！", vb, engine="bibi", voice=vname)
+        _, dv, srv = count_syllable_segments(vb)
+        check(f"{vname} 有声音", float(_np.abs(dv).max()) > 0.2,
+              f"峰值 {float(_np.abs(dv).max()):.3f}")
+        check(f"{vname} 时长合理", 0.6 < len(dv) / srv < 4.0, f"{len(dv)/srv:.2f}s")
+        check(f"{vname} 无削波", float(_np.mean(_np.abs(dv) > 0.999)) < 0.01,
+              f"{_np.mean(_np.abs(dv) > 0.999)*100:.2f}%")
+
+    # 同字同声：两次合成逐字节一致
+    s1 = _tmp2 / "bibi_same1.wav"
+    s2 = _tmp2 / "bibi_same2.wav"
+    say_engine("没饭了", s1, engine="bibi")
+    say_engine("没饭了", s2, engine="bibi")
+    check("同字同声可复现", s1.read_bytes() == s2.read_bytes())
+
+    # 音高与语速对哔哔啵啵也生效
+    say_engine("你好呀今天天气不错", _tmp2 / "lo.wav", engine="bibi", pitch_hz=300)
+    say_engine("你好呀今天天气不错", _tmp2 / "hi.wav", engine="bibi", pitch_hz=600)
+    _, d_lo, _ = count_syllable_segments(_tmp2 / "lo.wav")
+    _, d_hi, _ = count_syllable_segments(_tmp2 / "hi.wav")
+    check("哔哔啵啵音高生效", not _np.array_equal(d_lo, d_hi))
+
+    say_engine("你好呀今天天气不错", _tmp2 / "fast.wav", engine="bibi", units_per_second=20)
+    say_engine("你好呀今天天气不错", _tmp2 / "slow.wav", engine="bibi", units_per_second=8)
+    _, d_f, srf = count_syllable_segments(_tmp2 / "fast.wav")
+    _, d_s, _ = count_syllable_segments(_tmp2 / "slow.wav")
+    check("哔哔啵啵语速生效", len(d_f) < len(d_s), f"{len(d_f)/srf:.2f}s vs {len(d_s)/srf:.2f}s")
+
+    # ------------------------------------------------------------------
+    print("\n[19] 两个开关：关一个就用另一个")
+
+    pdef = P(context=None, config=FakeConfig({}))
+    check("默认两套都开", pdef._engines_on() == ["dongsen", "bibi"], str(pdef._engines_on()))
+
+    cfgz = FakeConfig({"voice": "dongsen", "enable_dongsen": False, "enable_bibi": True})
+    pz = P(context=None, config=cfgz)
+    check("关动森-落到哔哔啵啵", pz._pick(s)[0] == "bibi", str(pz._pick(s)))
+    check("关动森-声线换成 fish/lumo", pz._pick(s)[1] in ("fish", "lumo"))
+    check("关动森-状态文本", pz._engines_text().startswith("哔哔啵啵"), pz._engines_text())
+
+    cfgq = FakeConfig({"voice": "fish", "enable_dongsen": True, "enable_bibi": False})
+    pq = P(context=None, config=cfgq)
+    check("关哔哔啵啵-回动森", pq._pick(s) == ("dongsen", "dongsen"), str(pq._pick(s)))
+
+    cfgm = FakeConfig({"voice": "mix", "enable_dongsen": False, "enable_bibi": True})
+    pm = P(context=None, config=cfgm)
+    seen_v = {pm._pick(s)[1] for _ in range(120)}
+    check("mix+只开哔哔啵啵", seen_v <= {"fish", "lumo"}, str(seen_v))
+    check("mix 两条都抽到", seen_v == {"fish", "lumo"}, str(seen_v))
+    cfgm["enable_dongsen"] = True
+    cfgm["enable_bibi"] = False
+    check("mix+只开动森", {pm._pick(s) for _ in range(60)} == {("dongsen", "dongsen")})
+
+    cfg0 = FakeConfig({"voice": "mix", "enable_dongsen": False, "enable_bibi": False})
+    p0 = P(context=None, config=cfg0)
+    check("双关-无引擎", p0._pick(s) == ("", ""), str(p0._pick(s)))
+    check("双关-_any_engine", p0._any_engine() is False)
+    check("双关-状态文本", p0._engines_text() == "全关", p0._engines_text())
+    check("双关-合成返回 None", asyncio.run(p0._synthesize("你好呀", s)) is None)
+
+    cfg0h = FakeConfig({"voice": "mix", "enable_dongsen": False,
+                        "enable_bibi": False, "enable_auto": True})
+    p0h = P(context=None, config=cfg0h)
+    ev7 = FakeEvent([Plain("你好呀今天天气不错")])
+    asyncio.run(p0h.auto_voice(ev7))
+    check("双关-钩子不转", isinstance(ev7.get_result().chain[0], Plain))
+
+    # 选中的那套运行期崩了，要自动换另一套
+    orig_say = plugin_main.say
+
+    def boom_say(*a, **k):
+        raise RuntimeError("模拟音库炸了")
+
+    plugin_main.say = boom_say
+    try:
+        pbs = P(context=None, config=FakeConfig({"voice": "dongsen"}))
+        got = asyncio.run(pbs._synthesize("你好呀今天天气不错", s))
+        check("动森崩了自动换哔哔啵啵", got is not None and got.exists(), str(got))
+        if got:
+            got.unlink(missing_ok=True)
+    finally:
+        plugin_main.say = orig_say
+
+    # 两套都崩：返回 None，不抛
+    orig_eng = plugin_main.say_engine
+
+    def boom_eng(*a, **k):
+        raise RuntimeError("全炸")
+
+    plugin_main.say_engine = boom_eng
+    try:
+        pall = P(context=None, config=FakeConfig({"voice": "dongsen"}))
+        check("两套都崩返回 None",
+              asyncio.run(pall._synthesize("你好呀今天天气不错", s)) is None)
+    finally:
+        plugin_main.say_engine = orig_eng
+
+    # 声线指令存在
+    check("有声线指令", hasattr(P, "set_voice"))
+
+    # ------------------------------------------------------------------
     print("\n" + "=" * 46)
     print(f"通过 {PASS} / 失败 {FAIL}")
     if FAILS:

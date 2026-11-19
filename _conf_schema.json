@@ -1,4 +1,28 @@
 {
+  "enable_dongsen": {
+    "description": "动森引擎",
+    "type": "bool",
+    "default": true,
+    "hint": "407 个真人音节拼的动森腔。关掉就整条线不用它：声线写着 dongsen 也会自动走哔哔啵啵。"
+  },
+  "enable_bibi": {
+    "description": "哔哔啵啵引擎",
+    "type": "bool",
+    "default": true,
+    "hint": "锯齿波现捏的小人声（fish / lumo），零音库。关掉就整条线不用它：声线写着 fish / lumo 也会自动回动森。两个都关就不发语音。"
+  },
+  "voice": {
+    "description": "声线",
+    "type": "string",
+    "default": "mix",
+    "options": [
+      "dongsen",
+      "fish",
+      "lumo",
+      "mix"
+    ],
+    "hint": "dongsen = 动森腔；fish = 大肥鱼（尖）；lumo = 路墨（低）；mix = 在开着的引擎里随机挑，默认这个。"
+  },
   "enable_auto": {
     "description": "启用自动语音回复",
     "type": "bool",

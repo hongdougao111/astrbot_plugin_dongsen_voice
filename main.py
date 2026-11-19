@@ -37,16 +37,32 @@ from astrbot.api.star import Context, Star, register
 _PLUGIN_DIR = Path(__file__).parent
 sys.path.insert(0, str(_PLUGIN_DIR))
 
-from dongsen import say  # noqa: E402
+from dongsen import say, say_engine  # noqa: E402
 
 # 硬边界（防止配置填错导致崩溃）
 PITCH_MIN, PITCH_MAX = 300.0, 700.0
 UPS_MIN, UPS_MAX = 5.0, 25.0
 TEXT_HARD_MAX = 300
 
+# 两套引擎。关掉一个，声线自动落到另一个；两个都关就不发语音。
+ENGINE_DONGSEN = "dongsen"
+ENGINE_BIBI = "bibi"
+ENGINE_LABELS = {ENGINE_DONGSEN: "动森", ENGINE_BIBI: "哔哔啵啵"}
+ENGINE_KEYS = {ENGINE_DONGSEN: "enable_dongsen", ENGINE_BIBI: "enable_bibi"}
+
+# 声线 → 所属引擎
+VOICE_ENGINE = {"dongsen": ENGINE_DONGSEN, "fish": ENGINE_BIBI, "lumo": ENGINE_BIBI}
+
+# 可选声线。mix = 在开着的引擎里随机挑，两个引擎都用得上。
+VOICES = ("dongsen", "fish", "lumo", "mix")
+VOICE_LABELS = {"dongsen": "动森腔", "fish": "大肥鱼", "lumo": "路墨", "mix": "混着来"}
+
 # 配置默认值（与 _conf_schema.json 保持一致）
 DEFAULTS = {
     "enable_auto": False,
+    "enable_dongsen": True,
+    "enable_bibi": True,
+    "voice": "mix",
     "auto_probability": 100,
     "pitch_hz": 400,
     "units_per_second": 13,
@@ -62,7 +78,7 @@ DEFAULTS = {
     "astrbot_plugin_dongsen_voice",
     "hongdougao111",
     "把 Bot 的回复变成动森风格语音",
-    "1.5.1",
+    "1.6.0",
 )
 class DongsenVoicePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
@@ -71,6 +87,7 @@ class DongsenVoicePlugin(Star):
         # 会话级覆盖（指令设置的临时参数）
         self._session_pitch: dict[str, float] = {}
         self._session_ups: dict[str, float] = {}
+        self._session_voice: dict[str, str] = {}
         self._tmpdir = Path(tempfile.gettempdir()) / "astrbot_dongsen"
         self._tmpdir.mkdir(parents=True, exist_ok=True)
         self._last_cleanup = 0.0
@@ -139,8 +156,13 @@ class DongsenVoicePlugin(Star):
         except Exception as e:
             problems.append(f"枚举检查异常: {e}")
 
-        # 5. 合成能力（真正跑一次）
-        if bank is not None and table is not None:
+        # 5. 合成能力（两套引擎各真正跑一次，按开关来）
+        on = self._engines_on()
+        if not on:
+            problems.append("两套引擎都关了（enable_dongsen / enable_bibi 都是关）")
+        elif ENGINE_DONGSEN not in on:
+            ok.append("动森引擎已关闭，跳过")
+        elif bank is not None and table is not None:
             try:
                 import tempfile as _tf
 
@@ -149,11 +171,24 @@ class DongsenVoicePlugin(Star):
                 size = probe.stat().st_size
                 probe.unlink(missing_ok=True)
                 if size > 1000:
-                    ok.append(f"合成正常（{size // 1024}KB）")
+                    ok.append(f"动森合成正常（{size // 1024}KB）")
                 else:
-                    problems.append(f"合成结果过小: {size} bytes")
+                    problems.append(f"动森合成结果过小: {size} bytes")
             except Exception as e:
-                problems.append(f"合成失败: {e}")
+                problems.append(f"动森合成失败: {e}")
+
+        if ENGINE_BIBI in on:
+            probe = Path(tempfile.gettempdir()) / "astrbot_bibi_probe.wav"
+            try:
+                say_engine("测试", probe, engine=ENGINE_BIBI, voice="fish")
+                size = probe.stat().st_size
+                probe.unlink(missing_ok=True)
+                if size > 1000:
+                    ok.append(f"哔哔啵啵合成正常（{size // 1024}KB）")
+                else:
+                    problems.append(f"哔哔啵啵合成结果过小: {size} bytes")
+            except Exception as e:
+                problems.append(f"哔哔啵啵合成失败: {e}")
 
         self._diag = {"ok": ok, "problems": problems}
 
@@ -200,6 +235,63 @@ class DongsenVoicePlugin(Star):
             v = 13.0
         return max(UPS_MIN, min(UPS_MAX, v))
 
+    def _voice(self, session: str) -> str:
+        """配置里的声线（不含会话覆盖），认不出的按 mix 处理。"""
+        v = str(self._cfg("voice") or "mix").strip().lower()
+        return v if v in VOICES else "mix"
+
+    # ---------- 引擎开关 ----------
+
+    def _engine_on(self, engine: str) -> bool:
+        """某一套引擎是否启用。认不出的引擎名一律当关。"""
+        key = ENGINE_KEYS.get(engine)
+        return bool(self._cfg(key)) if key else False
+
+    def _engines_on(self) -> list[str]:
+        """开着的引擎，按优先级：动森在前，哔哔啵啵在后。"""
+        return [e for e in (ENGINE_DONGSEN, ENGINE_BIBI) if self._engine_on(e)]
+
+    def _any_engine(self) -> bool:
+        return bool(self._engines_on())
+
+    def _engines_text(self) -> str:
+        """「动森+哔哔啵啵」这种人读的开关摘要。"""
+        on = self._engines_on()
+        if not on:
+            return "全关"
+        if len(on) == 2:
+            return "动森+哔哔啵啵"
+        return ENGINE_LABELS[on[0]] + "（另一套已关）"
+
+    def _pick(self, session: str) -> tuple[str, str]:
+        """定下这一次用哪套引擎、哪条声线，返回 (引擎, 声线)；两套都关返回 ("", "")。
+
+        规则按顺序：
+          1. 声线所属的引擎开着 → 就用它（mix 在开着的引擎里抽）
+          2. 声线那套关了 → 换到还开着的那套，声线跟着换成它的默认
+          3. 两套都关 → ("", "")
+        """
+        on = self._engines_on()
+        if not on:
+            return "", ""
+        v = self._session_voice.get(session) if self._cfg("per_session_settings") else None
+        v = str(v or self._voice(session)).strip().lower()
+        if v not in VOICE_ENGINE and v != "mix":
+            v = "mix"
+
+        if v == "mix":
+            engine = random.choice(on)
+        else:
+            engine = VOICE_ENGINE[v]
+            if engine not in on:
+                engine = on[0]
+
+        if engine == ENGINE_DONGSEN:
+            return engine, "dongsen"
+        if v in ("fish", "lumo"):
+            return engine, v
+        return engine, random.choice(("fish", "lumo"))
+
     def _auto_on(self) -> bool:
         return bool(self._cfg("enable_auto"))
 
@@ -243,32 +335,44 @@ class DongsenVoicePlugin(Star):
         import uuid
 
         out = self._tmpdir / f"ds_{uuid.uuid4().hex[:16]}.wav"
-        try:
-            # say() 是同步阻塞的，丢到线程池避免卡住事件循环
-            await asyncio.to_thread(
-                say, text, out,
-                pitch_hz=self._pitch(session),
-                units_per_second=self._ups(session),
-            )
-        except Exception as e:
-            logger.error(f"[dongsen] 合成失败: {e}")
-            # 失败时清掉可能的半成品
+        engine, voice = self._pick(session)
+        if not engine:
+            # 两套都关：不发语音，也不算失败
+            return None
+
+        # 先用挑中的那套；它挂了（音库缺文件、numpy 版本不对…）
+        # 就换还开着的那套再试一次，两套都不成才算真失败。
+        tries = [(engine, voice)]
+        rest = [e for e in self._engines_on() if e != engine]
+        if rest:
+            tries.append((rest[0], "dongsen" if rest[0] == ENGINE_DONGSEN else "fish"))
+
+        last_err: Exception | None = None
+        for eng, voc in tries:
+            try:
+                await asyncio.to_thread(
+                    say_engine, text, out,
+                    engine=eng,
+                    voice=voc,
+                    pitch_hz=self._pitch(session),
+                    units_per_second=self._ups(session),
+                )
+                if out.exists() and out.stat().st_size >= 1000:
+                    if (eng, voc) != (engine, voice):
+                        logger.info(f"[dongsen] {ENGINE_LABELS[engine]} 没合成出来，"
+                                    f"改用 {ENGINE_LABELS[eng]}（{voc}）")
+                    return out
+                last_err = RuntimeError(f"{eng} 合成结果为空或过小")
+            except Exception as e:  # noqa: BLE001 — 挂哪套都要接着试另一套
+                last_err = e
+                logger.warning(f"[dongsen] {ENGINE_LABELS[eng]} 合成失败: {e}")
             try:
                 out.unlink(missing_ok=True)
             except OSError:
                 pass
-            return None
-        try:
-            if not out.exists() or out.stat().st_size < 1000:
-                logger.error("[dongsen] 合成结果为空或过小")
-                try:
-                    out.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return None
-        except OSError:
-            return None
-        return out
+
+        logger.error(f"[dongsen] 两套都没合成出来: {last_err}")
+        return None
 
     def _should_convert(self, text: str) -> bool:
         """判断一段文本适不适合转语音。
@@ -317,6 +421,8 @@ class DongsenVoicePlugin(Star):
     async def auto_voice(self, event: AstrMessageEvent):
         """发送前把 Bot 的回复替换成语音。"""
         if not self._auto_on():
+            return
+        if not self._any_engine():
             return
 
         result = event.get_result()
@@ -383,6 +489,12 @@ class DongsenVoicePlugin(Star):
             return
 
         session = event.unified_msg_origin
+        if not self._any_engine():
+            yield event.plain_result(
+                "两套引擎都关了，没得合成。去管理面板把「动森引擎」或"
+                "「哔哔啵啵引擎」至少打开一个。"
+            )
+            return
         self._cleanup()
 
         path = await self._synthesize(text, session)
@@ -448,6 +560,44 @@ class DongsenVoicePlugin(Star):
         self._session_ups[session] = v
         yield event.plain_result(f"本群语速设为 {v:.0f} 音节/秒。")
 
+    @filter.command("动森声线")
+    async def set_voice(self, event: AstrMessageEvent, value: str = ""):
+        """看或切本群声线：/动森声线 fish"""
+        session = event.unified_msg_origin
+        if not self._cfg("per_session_settings"):
+            yield event.plain_result("管理员已关闭会话内调整，请到管理面板修改。")
+            return
+
+        if not value:
+            eng, voc = self._pick(session)
+            lines = [f"当前声线：{self._session_voice.get(session, self._voice(session))}",
+                     f"这一句会用：{ENGINE_LABELS[eng]}（{voc}）" if eng else "这一句会用：无（两套都关）",
+                     f"开着的引擎：{self._engines_text()}", "可选："]
+            lines.append("  dongsen  动森腔（407 个真人音节拼的）")
+            lines.append("  fish     哔哔啵啵·大肥鱼（尖，字头带小滑音）")
+            lines.append("  lumo     哔哔啵啵·路墨（低，句尾往下落）")
+            lines.append("  mix      开着的引擎里随机挑")
+            lines.append("用 /动森声线 fish 切换，/动森重置 恢复默认")
+            yield event.plain_result("\n".join(lines))
+            return
+
+        v = value.strip().lower()
+        if v not in VOICES:
+            yield event.plain_result(f"只认这几种：{'、'.join(VOICES)}")
+            return
+        self._session_voice[session] = v
+
+        eng, voc = self._pick(session)
+        if not eng:
+            yield event.plain_result("记下了，但两套引擎都关着，现在不会出声。")
+        elif VOICE_ENGINE.get(v, "") not in ("", *self._engines_on()):
+            yield event.plain_result(
+                f"{VOICE_LABELS[v]}属于{ENGINE_LABELS[VOICE_ENGINE[v]]}引擎，"
+                f"那套现在是关的，所以实际会用{ENGINE_LABELS[eng]}（{voc}）。"
+            )
+        else:
+            yield event.plain_result(f"本群声线设为 {v}，这一句会用{ENGINE_LABELS[eng]}（{voc}）。")
+
     @filter.command("动森诊断")
     async def diagnose(self, event: AstrMessageEvent):
         """检查运行环境，排查「没反应」类问题。"""
@@ -468,12 +618,16 @@ class DongsenVoicePlugin(Star):
 
         # 当前配置
         s = event.unified_msg_origin
+        eng, voc = self._pick(s)
         lines.append(
             f"配置：自动={'开' if self._auto_on() else '关'} "
             f"概率={self._prob()}% "
+            f"引擎={self._engines_text()} "
+            f"声线={self._session_voice.get(s, self._voice(s))} "
             f"音高={self._pitch(s):.0f} "
             f"语速={self._ups(s):.0f}"
         )
+        lines.append(f"这一句会用：{ENGINE_LABELS[eng]}（{voc}）" if eng else "这一句会用：无（两套都关）")
 
         if problems:
             lines.append("")
@@ -488,8 +642,10 @@ class DongsenVoicePlugin(Star):
         session = event.unified_msg_origin
         self._session_pitch.pop(session, None)
         self._session_ups.pop(session, None)
+        self._session_voice.pop(session, None)
         yield event.plain_result(
-            f"已恢复默认：音高 {self._pitch(session):.0f} Hz，"
+            f"已恢复默认：声线 {self._voice(session)}，"
+            f"音高 {self._pitch(session):.0f} Hz，"
             f"语速 {self._ups(session):.0f} 音节/秒"
         )
 
@@ -503,11 +659,15 @@ class DongsenVoicePlugin(Star):
             override.append(f"音高 {self._session_pitch[s]:.0f}")
         if s in self._session_ups:
             override.append(f"语速 {self._session_ups[s]:.0f}")
+        if s in self._session_voice:
+            override.append(f"声线 {self._session_voice[s]}")
         override_text = f"\n本群覆盖：{'、'.join(override)}" if override else ""
 
         yield event.plain_result(
             f"【动森语音设置】\n"
             f"自动语音：{auto}（概率 {self._prob()}%）\n"
+            f"引擎：{self._engines_text()}\n"
+            f"声线：{self._session_voice.get(s, self._voice(s))}\n"
             f"音高：{self._pitch(s):.0f} Hz\n"
             f"语速：{self._ups(s):.0f} 音节/秒\n"
             f"字数范围：{self._cfg('min_chars')}-{self._cfg('max_chars')}"
