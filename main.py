@@ -119,7 +119,7 @@ DEFAULTS = {
     "astrbot_plugin_dongsen_voice",
     "hongdougao111",
     "把 Bot 的回复变成动森风格语音",
-    "1.6.1",
+    "1.6.5",
 )
 class DongsenVoicePlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
